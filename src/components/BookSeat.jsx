@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-// --- NEW SVG Seat Icon Component ---
-// This component renders a seat icon and handles its different states
+const API_URL = import.meta.env.VITE_API_URL; 
 const SeatIcon = ({ status = 'available' }) => {
   const colors = {
     available: { fill: '#D1FAE5', stroke: '#10B981' }, // Light green fill, green stroke
@@ -66,82 +65,61 @@ function BookSeat({ selectedRoute, onBack }) {
   }
 
   // Fetch occupied seats whenever the route or time changes
-  useEffect(() => {
-    setIsBooked(false); 
-    setMessage(null);
+  // --- Updated fetch URLs to use environment variable ---
+const API_URL = import.meta.env.VITE_API_URL; // Vercel env variable
 
-    if (!selectedRoute.id || !travelTime) return;
+useEffect(() => {
+  setIsBooked(false);
+  setMessage(null);
 
-    setLoadingSeats(true);
-    // --- UPDATE: Reset seatError ---
-    setSeatError(null);
-    setBookingError(null); // Also clear booking error on time change
-    setSelectedSeat(null); 
+  if (!selectedRoute.id || !travelTime) return;
 
-    fetch(`/api/reservations/occupied?routeId=${selectedRoute.id}&travelTime=${travelTime}`)
-      .then(response => {
-        if (!response.ok) {
-          throw new Error('Could not fetch seat data from backend.');
-        }
-        return response.json();
-      })
-      .then(data => {
-        setOccupiedSeats(data);
-      })
-      .catch(err => {
-        // --- UPDATE: Set seatError ---
-        setSeatError(err.message);
-      })
-      .finally(() => {
-        setLoadingSeats(false);
-      });
+  setLoadingSeats(true);
+  setSeatError(null);
+  setBookingError(null);
+  setSelectedSeat(null);
 
-  }, [selectedRoute.id, travelTime]);
-
-  const handleBooking = (e) => {
-    e.preventDefault();
-    
-    if (!selectedSeat) {
-      // --- UPDATE: Set bookingError ---
-      setBookingError('Please select a seat.');
-      return;
-    }
-
-    setLoading(true);
-    setMessage(null);
-    // --- UPDATE: Set bookingError ---
-    setBookingError(null);
-
-    const bookingDetails = {
-      customerName,
-      routeId: selectedRoute.id,
-      travelTime,
-      seatNumber: selectedSeat 
-    };
-
-    fetch('/api/reservations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(bookingDetails)
+  fetch(`${API_URL}/api/reservations/occupied?routeId=${selectedRoute.id}&travelTime=${travelTime}`)
+    .then(res => {
+      if (!res.ok) throw new Error('Could not fetch seat data from backend.');
+      return res.json();
     })
-    .then(response => {
-      if (!response.ok) {
-        return response.text().then(text => { throw new Error(text) });
-      }
-      return response.text();
-    })
-    .then(successMessage => {
-      setMessage(successMessage);
-      setIsBooked(true);
-    })
-    .catch(err => {
-      // --- UPDATE: Set bookingError ---
-      setBookingError(err.message);
-    })
-    .finally(() => {
-      setLoading(false);
-    });
+    .then(data => setOccupiedSeats(data))
+    .catch(err => setSeatError(err.message))
+    .finally(() => setLoadingSeats(false));
+}, [selectedRoute.id, travelTime]);
+
+const handleBooking = (e) => {
+  e.preventDefault();
+  if (!selectedSeat) return setBookingError('Please select a seat.');
+
+  setLoading(true);
+  setBookingError(null);
+  setMessage(null);
+
+  const bookingDetails = {
+    customerName,
+    routeId: selectedRoute.id,
+    travelTime,
+    seatNumber: selectedSeat
   };
+
+  fetch(`${API_URL}/api/reservations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(bookingDetails)
+  })
+  .then(res => {
+    if (!res.ok) return res.text().then(text => { throw new Error(text) });
+    return res.text();
+  })
+  .then(msg => {
+    setMessage(msg);
+    setIsBooked(true);
+  })
+  .catch(err => setBookingError(err.message))
+  .finally(() => setLoading(false));
+};
 
   // --- NEW Seat Button Component ---
   const Seat = ({ seatNumber }) => {

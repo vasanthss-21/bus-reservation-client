@@ -7,7 +7,6 @@ function RouteList({ onBookNow }) {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Fetch routes from the Spring Boot backend via the Vite proxy
     fetch('/api/routes')
       .then(response => {
         if (!response.ok) {
@@ -24,7 +23,7 @@ function RouteList({ onBookNow }) {
         setError(error.message);
         setLoading(false);
       });
-  }, []); // The empty dependency array ensures this effect runs only once on mount
+  }, []); 
 
   if (loading) {
     return <div className="text-center p-8">Loading available routes...</div>;
