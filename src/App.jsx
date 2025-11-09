@@ -31,7 +31,15 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 font-sans">
+    <div 
+      className="min-h-screen font-sans"
+      style={{
+        backgroundImage: "url('bg.png')", // <-- YOUR IMAGE HERE
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundAttachment: 'fixed'
+      }}
+    >
       {/* Header */}
       <header className="bg-gray-800 text-white shadow-md">
         <nav className="container mx-auto px-6 py-4 flex justify-between items-center">
