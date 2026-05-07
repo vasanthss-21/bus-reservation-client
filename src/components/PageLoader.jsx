@@ -2,8 +2,8 @@ import React from 'react';
 
 export default function PageLoader() {
   return (
-    <div className="fixed z-[9999] flex flex-col items-center justify-center rounded-2xl"
-      style={{ top: '100px', left: 'clamp(8px, 5vw, 80px)', right: 'clamp(8px, 5vw, 200px)', bottom: '40px', background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(12px)' }}>
+    <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center"
+      style={{ background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(12px)' }}>
 
       {/* Animated bus track */}
       <div className="relative w-48 sm:w-64 mb-8">

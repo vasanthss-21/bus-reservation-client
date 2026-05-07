@@ -66,7 +66,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen font-sans relative">
+    <div className="min-h-screen relative">
 
       {/* Video Background */}
       <video autoPlay loop muted playsInline

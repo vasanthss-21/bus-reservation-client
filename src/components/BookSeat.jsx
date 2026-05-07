@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FaArrowLeft, FaBus, FaChair, FaUser, FaBirthdayCake, FaCheckCircle } from 'react-icons/fa';
+import { FaArrowLeft, FaBus, FaChair, FaUser, FaBirthdayCake, FaCheckCircle, FaPlus, FaMinus, FaTrash } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL;
 const CARD_STYLE = { padding: 'clamp(16px, 4vw, 40px)', marginTop: 'clamp(20px, 6vw, 80px)', background: 'rgba(255,255,255,0.90)', border: '1.5px solid rgba(21, 0, 255, 0.7)', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' };
@@ -31,8 +31,12 @@ const generateSchedules = (route) => {
   });
 };
 
-const SeatIcon = ({ status = 'available' }) => {
-  const colors = { available: { fill: '#eef2ff', stroke: '#6366f1' }, occupied: { fill: '#f1f5f9', stroke: '#cbd5e1' }, selected: { fill: '#6366f1', stroke: '#4f46e5' } };
+const SeatIcon = ({ status = 'available', label }) => {
+  const colors = {
+    available: { fill: '#eef2ff', stroke: '#6366f1' },
+    occupied: { fill: '#f1f5f9', stroke: '#cbd5e1' },
+    selected: { fill: '#6366f1', stroke: '#4f46e5' },
+  };
   const { fill, stroke } = colors[status] || colors.available;
   return (
     <svg viewBox="0 0 24 24" className="w-full h-full" fill="none">
@@ -43,22 +47,35 @@ const SeatIcon = ({ status = 'available' }) => {
   );
 };
 
+// Seat number badge colors for multi-select
+const SEAT_COLORS = ['#6366f1','#ec4899','#f59e0b','#10b981','#3b82f6','#8b5cf6'];
+
 function BookSeat({ user, selectedRoute, onBack }) {
   const schedules = generateSchedules(selectedRoute);
-  const [customerName, setCustomerName] = useState(user?.name ?? '');
-  const [age, setAge] = useState('');
+
   const [selectedSchedule, setSelectedSchedule] = useState(null);
-  const [selectedSeat, setSelectedSeat] = useState(null);
+  const [selectedSeats, setSelectedSeats] = useState([]); // array of seat numbers
+  const [passengers, setPassengers] = useState([{ name: user?.name ?? '', age: '' }]);
   const [occupiedSeats, setOccupiedSeats] = useState([]);
   const [bookingError, setBookingError] = useState(null);
   const [seatError, setSeatError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingSeats, setLoadingSeats] = useState(false);
-  const [isBooked, setIsBooked] = useState(false);
+  const [bookedResults, setBookedResults] = useState(null); // null until confirmed
+
+  // Sync passengers array length with selectedSeats
+  useEffect(() => {
+    setPassengers(prev => {
+      const next = [...prev];
+      while (next.length < selectedSeats.length) next.push({ name: '', age: '' });
+      while (next.length > selectedSeats.length && next.length > 1) next.pop();
+      return next;
+    });
+  }, [selectedSeats.length]);
 
   useEffect(() => {
     if (!selectedRoute.id || !selectedSchedule) return;
-    setLoadingSeats(true); setSeatError(null); setBookingError(null); setSelectedSeat(null);
+    setLoadingSeats(true); setSeatError(null); setBookingError(null); setSelectedSeats([]); setPassengers([{ name: user?.name ?? '', age: '' }]);
     fetch(`${API_URL}/api/reservations/occupied?routeId=${selectedRoute.id}&travelTime=${selectedSchedule.travelTime}`)
       .then(res => { if (!res.ok) throw new Error('Could not load seat data.'); return res.json(); })
       .then(data => setOccupiedSeats(data))
@@ -66,34 +83,69 @@ function BookSeat({ user, selectedRoute, onBack }) {
       .finally(() => setLoadingSeats(false));
   }, [selectedRoute.id, selectedSchedule]);
 
-  const handleBooking = (e) => {
+  const toggleSeat = (seatNumber) => {
+    setSelectedSeats(prev => {
+      if (prev.includes(seatNumber)) return prev.filter(s => s !== seatNumber);
+      return [...prev, seatNumber];
+    });
+    setBookingError(null);
+  };
+
+  const updatePassenger = (idx, field, value) => {
+    setPassengers(prev => prev.map((p, i) => i === idx ? { ...p, [field]: value } : p));
+  };
+
+  const handleBooking = async (e) => {
     e.preventDefault();
     if (!selectedSchedule) return setBookingError('Please select a departure time.');
-    if (!selectedSeat) return setBookingError('Please select a seat.');
-    if (!age || age < 1 || age > 120) return setBookingError('Please enter a valid age.');
+    if (selectedSeats.length === 0) return setBookingError('Please select at least one seat.');
+    for (let i = 0; i < passengers.length; i++) {
+      if (!passengers[i].name.trim()) return setBookingError(`Enter name for Passenger ${i + 1}.`);
+      if (!passengers[i].age || passengers[i].age < 1 || passengers[i].age > 120) return setBookingError(`Enter valid age for Passenger ${i + 1}.`);
+    }
     setLoading(true); setBookingError(null);
-    fetch(`${API_URL}/api/reservations`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ customerName, routeId: selectedRoute.id, travelTime: selectedSchedule.travelTime, seatNumber: selectedSeat }),
-    })
-      .then(res => { if (!res.ok) return res.text().then(t => { throw new Error(t); }); return res.text(); })
-      .then(() => setIsBooked(true))
-      .catch(err => setBookingError(err.message))
-      .finally(() => setLoading(false));
+    try {
+      // Book each seat sequentially
+      for (let i = 0; i < selectedSeats.length; i++) {
+        const res = await fetch(`${API_URL}/api/reservations`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customerName: passengers[i].name,
+            routeId: selectedRoute.id,
+            travelTime: selectedSchedule.travelTime,
+            seatNumber: selectedSeats[i],
+          }),
+        });
+        if (!res.ok) { const t = await res.text(); throw new Error(t || `Booking failed for seat ${selectedSeats[i]}.`); }
+      }
+      setBookedResults({ seats: selectedSeats, passengers, schedule: selectedSchedule });
+    } catch (err) {
+      setBookingError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const Seat = ({ seatNumber }) => {
     const isOccupied = occupiedSeats.includes(seatNumber);
-    const isSelected = selectedSeat === seatNumber;
+    const selIdx = selectedSeats.indexOf(seatNumber);
+    const isSelected = selIdx !== -1;
     const status = isOccupied ? 'occupied' : isSelected ? 'selected' : 'available';
+    const color = isSelected ? SEAT_COLORS[selIdx % SEAT_COLORS.length] : null;
     return (
       <button type="button" disabled={isOccupied}
-        onClick={() => !isOccupied && setSelectedSeat(seatNumber)}
-        className={`w-9 h-9 sm:w-11 sm:h-11 relative transition-transform duration-150 ${isOccupied ? 'cursor-not-allowed opacity-50' : 'hover:scale-110'} ${isSelected ? 'ring-2 ring-indigo-500 rounded-lg' : ''}`}>
+        onClick={() => !isOccupied && toggleSeat(seatNumber)}
+        className={`w-9 h-9 sm:w-11 sm:h-11 relative transition-transform duration-150 ${isOccupied ? 'cursor-not-allowed opacity-50' : 'hover:scale-110'}`}
+        style={isSelected ? { filter: `drop-shadow(0 0 4px ${color}88)` } : {}}>
         <SeatIcon status={status} />
         <span className={`absolute inset-0 flex items-center justify-center text-[10px] sm:text-xs font-bold ${isSelected ? 'text-white' : isOccupied ? 'text-gray-400' : 'text-indigo-700'}`}>
-          {seatNumber}
+          {isSelected ? selIdx + 1 : seatNumber}
         </span>
+        {/* Colored dot for multi-seat distinction */}
+        {isSelected && (
+          <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white"
+            style={{ background: color }} />
+        )}
       </button>
     );
   };
@@ -113,18 +165,42 @@ function BookSeat({ user, selectedRoute, onBack }) {
     );
     return (
       <div className="p-4 sm:p-6 rounded-2xl" style={{ background: 'rgba(255,255,255,0.88)', border: '1.5px solid rgba(255,255,255,0.7)', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
-        <h3 className="text-sm sm:text-base font-bold text-gray-800 mb-3 sm:mb-4">Select Your Seat</h3>
+        <div className="flex items-center justify-between mb-3 sm:mb-4">
+          <h3 className="text-sm sm:text-base font-bold text-gray-800">Select Seats</h3>
+          {selectedSeats.length > 0 && (
+            <span className="px-2.5 py-1 rounded-full text-xs font-semibold text-indigo-700"
+              style={{ background: '#eef2ff', border: '1px solid #c7d2fe' }}>
+              {selectedSeats.length} seat{selectedSeats.length > 1 ? 's' : ''} selected
+            </span>
+          )}
+        </div>
+
         {/* Legend */}
         <div className="flex gap-3 sm:gap-5 mb-4 sm:mb-5 text-xs font-medium text-gray-500">
           {[['available', 'Available'], ['selected', 'Selected'], ['occupied', 'Occupied']].map(([s, l]) => (
             <div key={s} className="flex items-center gap-1.5"><div className="w-4 h-4 sm:w-5 sm:h-5"><SeatIcon status={s} /></div> {l}</div>
           ))}
         </div>
+
+        {/* Selected seats chips */}
+        {selectedSeats.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {selectedSeats.map((s, i) => (
+              <span key={s} className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold text-white"
+                style={{ background: SEAT_COLORS[i % SEAT_COLORS.length] }}>
+                Seat {s}
+                <button type="button" onClick={() => toggleSeat(s)} className="ml-0.5 hover:opacity-75">×</button>
+              </span>
+            ))}
+          </div>
+        )}
+
         {/* Driver */}
         <div className="flex justify-center mb-3 sm:mb-4">
           <div className="px-3 sm:px-4 py-1 rounded-full text-xs font-semibold text-indigo-600"
             style={{ background: '#eef2ff', border: '1px solid #c7d2fe' }}>🚌 Driver</div>
         </div>
+
         {loadingSeats ? (
           <p className="text-center text-gray-400 text-sm py-6">Loading seats…</p>
         ) : (
@@ -146,22 +222,40 @@ function BookSeat({ user, selectedRoute, onBack }) {
   };
 
   /* Booking confirmed */
-  if (isBooked) return (
+  if (bookedResults) return (
     <div className="max-w-7xl rounded-2xl mx-auto" style={CARD_STYLE}>
-      <div className="text-center max-w-sm mx-auto py-6 sm:py-8">
+      <div className="text-center max-w-md mx-auto py-6 sm:py-8">
         <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center mx-auto mb-4"
           style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}>
           <FaCheckCircle className="text-white text-xl sm:text-2xl" />
         </div>
         <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900 mb-1">Booking Confirmed!</h2>
-        <p className="text-gray-500 text-sm mb-3">{selectedRoute.origin} → {selectedRoute.destination}</p>
-        <div className="rounded-xl p-3 mb-4 text-sm text-left space-y-1"
+        <p className="text-gray-500 text-sm mb-4">{selectedRoute.origin} → {selectedRoute.destination}</p>
+
+        <div className="rounded-xl p-3 mb-2 text-sm text-left"
           style={{ background: '#eef2ff', border: '1px solid #c7d2fe' }}>
-          <p><span className="text-gray-500">Passenger:</span> <span className="font-semibold text-gray-800">{customerName}</span> (Age {age})</p>
-          <p><span className="text-gray-500">Seat:</span> <span className="font-semibold text-indigo-600">#{selectedSeat}</span></p>
-          <p><span className="text-gray-500">Departs:</span> <span className="font-semibold text-gray-800">{selectedSchedule?.departure}</span></p>
-          <p><span className="text-gray-500">Arrives:</span> <span className="font-semibold text-gray-800">{selectedSchedule?.arrival}</span></p>
+          <p className="text-xs font-semibold text-gray-500 mb-2">TRIP DETAILS</p>
+          <p><span className="text-gray-500">Departs:</span> <span className="font-semibold text-gray-800">{bookedResults.schedule.departure}</span></p>
+          <p><span className="text-gray-500">Arrives:</span> <span className="font-semibold text-gray-800">{bookedResults.schedule.arrival}</span></p>
+          <p><span className="text-gray-500">Duration:</span> <span className="font-semibold text-gray-800">{bookedResults.schedule.duration}</span></p>
         </div>
+
+        <div className="space-y-2 mb-4">
+          {bookedResults.seats.map((seat, i) => (
+            <div key={seat} className="rounded-xl p-3 text-sm text-left flex items-center gap-3"
+              style={{ background: 'white', border: `1.5px solid ${SEAT_COLORS[i % SEAT_COLORS.length]}44` }}>
+              <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+                style={{ background: SEAT_COLORS[i % SEAT_COLORS.length] }}>{i + 1}</span>
+              <div>
+                <p className="font-semibold text-gray-800">{bookedResults.passengers[i].name}
+                  <span className="text-gray-400 font-normal ml-1">(Age {bookedResults.passengers[i].age})</span>
+                </p>
+                <p className="text-xs text-gray-500">Seat <span className="font-semibold text-indigo-600">#{seat}</span></p>
+              </div>
+            </div>
+          ))}
+        </div>
+
         <button onClick={onBack} className="w-full py-3 rounded-xl font-semibold text-sm text-white transition hover:brightness-110"
           style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}>Back to Routes</button>
       </div>
@@ -172,7 +266,6 @@ function BookSeat({ user, selectedRoute, onBack }) {
   return (
     <div className="max-w-7xl rounded-2xl mx-auto" style={CARD_STYLE}>
 
-      {/* Back */}
       <button onClick={onBack}
         className="flex items-center gap-2 mb-4 sm:mb-5 px-3 sm:px-4 py-2 rounded-xl text-sm font-medium text-indigo-600 transition hover:bg-indigo-50"
         style={{ background: 'rgba(255,255,255,0.7)', border: '1.5px solid #e0e7ff' }}>
@@ -195,36 +288,12 @@ function BookSeat({ user, selectedRoute, onBack }) {
             <p className="text-xs sm:text-sm text-gray-400 pl-9 sm:pl-10">{selectedRoute.origin} → {selectedRoute.destination}</p>
           </div>
 
-          <form onSubmit={handleBooking} className="space-y-3 sm:space-y-4">
+          <form onSubmit={handleBooking} className="space-y-4 sm:space-y-5">
 
-            {/* Name */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1.5">Passenger Name</label>
-              <div className="relative">
-                <FaUser className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-xs" />
-                <input type="text" required value={customerName} onChange={e => setCustomerName(e.target.value)}
-                  placeholder="Full name"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm text-gray-700 placeholder-gray-400 outline-none transition focus:ring-2 focus:ring-indigo-400"
-                  style={{ background: '#f1f5f9', border: '1.5px solid #e2e8f0' }} />
-              </div>
-            </div>
-
-            {/* Age */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1.5">Age</label>
-              <div className="relative">
-                <FaBirthdayCake className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-xs" />
-                <input type="number" required min="1" max="120" value={age} onChange={e => setAge(e.target.value)}
-                  placeholder="Enter your age"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm text-gray-700 placeholder-gray-400 outline-none transition focus:ring-2 focus:ring-indigo-400"
-                  style={{ background: '#f1f5f9', border: '1.5px solid #e2e8f0' }} />
-              </div>
-            </div>
-
-            {/* Departure schedule cards */}
+            {/* Departure schedule */}
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-2">Choose Departure</label>
-              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+              <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
                 {schedules.map(schedule => {
                   const isSelected = selectedSchedule?.id === schedule.id;
                   return (
@@ -260,17 +329,57 @@ function BookSeat({ user, selectedRoute, onBack }) {
               </div>
             </div>
 
-            {/* Selected seat */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1.5">Selected Seat</label>
-              <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm"
-                style={{ background: selectedSeat ? '#eef2ff' : '#f8fafc', border: `1.5px solid ${selectedSeat ? '#c7d2fe' : '#e2e8f0'}` }}>
-                <FaChair className={selectedSeat ? 'text-indigo-500' : 'text-gray-300'} />
-                <span className={`text-xs sm:text-sm ${selectedSeat ? 'text-indigo-700 font-semibold' : 'text-gray-400'}`}>
-                  {selectedSeat ? `Seat ${selectedSeat}` : 'Pick from the seat grid'}
-                </span>
-              </div>
+            {/* Seat count hint */}
+            <div className="px-3 py-2 rounded-xl text-xs text-indigo-600 font-medium flex items-center gap-2"
+              style={{ background: '#eef2ff', border: '1px solid #c7d2fe' }}>
+              <FaChair />
+              {selectedSeats.length === 0
+                ? 'Click seats on the grid to select (multiple allowed)'
+                : `${selectedSeats.length} seat${selectedSeats.length > 1 ? 's' : ''} selected — fill in passenger details below`}
             </div>
+
+            {/* Per-passenger fields */}
+            {selectedSeats.length > 0 && (
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-gray-600">Passenger Details</p>
+                {selectedSeats.map((seat, i) => (
+                  <div key={seat} className="p-3 rounded-xl space-y-2"
+                    style={{ background: 'white', border: `1.5px solid ${SEAT_COLORS[i % SEAT_COLORS.length]}55` }}>
+
+                    {/* Seat label */}
+                    <div className="flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
+                        style={{ background: SEAT_COLORS[i % SEAT_COLORS.length] }}>{i + 1}</span>
+                      <span className="text-xs font-semibold text-gray-700">Seat #{seat}</span>
+                      <button type="button" onClick={() => toggleSeat(seat)}
+                        className="ml-auto text-gray-300 hover:text-red-400 transition">
+                        <FaTrash className="text-xs" />
+                      </button>
+                    </div>
+
+                    {/* Name */}
+                    <div className="relative">
+                      <FaUser className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs" />
+                      <input type="text" required placeholder="Passenger name"
+                        value={passengers[i]?.name ?? ''}
+                        onChange={e => updatePassenger(i, 'name', e.target.value)}
+                        className="w-full pl-8 pr-3 py-2 rounded-lg text-xs text-gray-700 placeholder-gray-400 outline-none focus:ring-2 focus:ring-indigo-400"
+                        style={{ background: '#f8fafc', border: '1.5px solid #e2e8f0' }} />
+                    </div>
+
+                    {/* Age */}
+                    <div className="relative">
+                      <FaBirthdayCake className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs" />
+                      <input type="number" required min="1" max="120" placeholder="Age"
+                        value={passengers[i]?.age ?? ''}
+                        onChange={e => updatePassenger(i, 'age', e.target.value)}
+                        className="w-full pl-8 pr-3 py-2 rounded-lg text-xs text-gray-700 placeholder-gray-400 outline-none focus:ring-2 focus:ring-indigo-400"
+                        style={{ background: '#f8fafc', border: '1.5px solid #e2e8f0' }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {bookingError && (
               <div className="px-4 py-3 rounded-xl text-red-600 text-sm"
@@ -278,10 +387,10 @@ function BookSeat({ user, selectedRoute, onBack }) {
             )}
 
             <button type="submit"
-              disabled={loading || loadingSeats || !selectedSeat || !selectedSchedule || !customerName || !age}
+              disabled={loading || loadingSeats || selectedSeats.length === 0 || !selectedSchedule}
               className="w-full py-2.5 sm:py-3 rounded-xl font-semibold text-sm text-white transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-indigo-200"
               style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}>
-              {loading ? 'Booking…' : 'Confirm Booking'}
+              {loading ? 'Booking…' : `Confirm ${selectedSeats.length > 1 ? `${selectedSeats.length} Seats` : 'Booking'}`}
             </button>
           </form>
         </div>

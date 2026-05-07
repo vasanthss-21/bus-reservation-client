@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { FaBus, FaRegClock, FaArrowRight, FaRupeeSign, FaChair, FaSearch, FaMapMarkerAlt, FaCalendarAlt, FaExchangeAlt } from 'react-icons/fa';
+import { FaBus, FaRegClock, FaArrowRight, FaRupeeSign, FaChair, FaSearch, FaMapMarkerAlt, FaCalendarAlt, FaExchangeAlt, FaRoad, FaClock } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -7,6 +7,17 @@ const CARD_STYLE = { padding: 'clamp(16px, 4vw, 40px)', marginTop: 'clamp(20px, 
 
 const realisticFare = (route) => {
   if (route.price) return route.price;
+  const distKm = route.distanceKm ?? route.distance_km;
+  if (distKm) {
+    const cap = route.capacity ?? 40;
+    let ratePerKm, busType;
+    if (cap > 50) { ratePerKm = 1.00; busType = 'Ordinary'; }
+    else if (cap > 40) { ratePerKm = 1.50; busType = 'Express'; }
+    else if (cap > 30) { ratePerKm = 1.80; busType = 'AC Deluxe'; }
+    else { ratePerKm = 2.00; busType = 'AC Sleeper'; }
+    return { fare: Math.round((distKm * ratePerKm) / 5) * 5, busType };
+  }
+  // fallback hash-based
   const hash = (route.id ?? '').split('').reduce((a, c) => a + c.charCodeAt(0), 0);
   const km = 80 + (hash % 621);
   const cap = route.capacity ?? 40;
@@ -15,7 +26,14 @@ const realisticFare = (route) => {
   else if (cap > 40) { ratePerKm = 1.50; busType = 'Express'; }
   else if (cap > 30) { ratePerKm = 1.80; busType = 'AC Deluxe'; }
   else { ratePerKm = 2.00; busType = 'AC Sleeper'; }
-  return { fare: Math.round((km * ratePerKm) / 5) * 5, busType, km };
+  return { fare: Math.round((km * ratePerKm) / 5) * 5, busType };
+};
+
+const formatDuration = (hrs) => {
+  if (!hrs) return null;
+  const h = Math.floor(hrs);
+  const m = Math.round((hrs - h) * 60);
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
 };
 
 const RouteCardSkeleton = () => (
@@ -63,7 +81,10 @@ function RouteList({ onBookNow }) {
             ...route,
             price: typeof fareInfo === 'object' ? fareInfo.fare : fareInfo,
             busType: typeof fareInfo === 'object' ? fareInfo.busType : null,
-            estimatedKm: typeof fareInfo === 'object' ? fareInfo.km : null,
+            distanceKm: route.distanceKm ?? route.distance_km ?? null,
+            durationHrs: route.durationHrs ?? route.duration_hrs ?? null,
+            via: route.via ?? null,
+            busNumber: route.busNumber ?? route.bus_number ?? null,
             departureTime: route.departureTime ?? '10:30 AM',
             arrivalTime: route.arrivalTime ?? '04:45 PM',
           };
@@ -97,7 +118,6 @@ function RouteList({ onBookNow }) {
     return map[type] ?? map['Ordinary'];
   };
 
-  /* Loading */
   if (loading) return (
     <div className="max-w-7xl rounded-2xl mx-auto space-y-5" style={CARD_STYLE}>
       <h2 className="text-xl sm:text-2xl font-extrabold text-gray-800 text-center">Loading routes…</h2>
@@ -107,7 +127,6 @@ function RouteList({ onBookNow }) {
     </div>
   );
 
-  /* Error */
   if (error) return (
     <div className="max-w-7xl rounded-2xl mx-auto space-y-5" style={CARD_STYLE}>
       <div className="max-w-lg mx-auto px-4 py-3 rounded-2xl text-red-700 font-medium text-sm"
@@ -194,7 +213,7 @@ function RouteList({ onBookNow }) {
             </div>
 
             {/* Search Button */}
-            <div className="lg:col-span-1 sm:col-span-2 lg:col-span-1">
+            <div className="lg:col-span-1 sm:col-span-2">
               <button type="submit"
                 className="w-full h-[46px] rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2 transition-all hover:brightness-110 active:scale-95 shadow-md shadow-indigo-200"
                 style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}>
@@ -263,6 +282,7 @@ function RouteList({ onBookNow }) {
           {/* Route cards */}
           {filteredRoutes.map(route => {
             const badge = typeBadge(route.busType);
+            const duration = formatDuration(route.durationHrs);
             return (
               <div key={route.id} className="rounded-2xl p-4 sm:p-5 transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5"
                 style={{ background: 'white', border: '1.5px solid #e2e8f0', boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}>
@@ -270,13 +290,19 @@ function RouteList({ onBookNow }) {
 
                   {/* Route info */}
                   <div className="flex-grow">
+
+                    {/* Bus number + type badge */}
                     <div className="flex items-center gap-3 mb-2">
                       <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center flex-shrink-0"
                         style={{ background: '#eef2ff' }}>
                         <FaBus className="text-indigo-500 text-sm" />
                       </div>
-                      <div>
-                        <h3 className="text-sm sm:text-base font-bold text-gray-900">{route.busName}</h3>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {route.busNumber && (
+                          <span className="text-sm sm:text-base font-bold text-gray-900 tracking-wide">
+                            {route.busNumber}
+                          </span>
+                        )}
                         {route.busType && (
                           <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
                             style={{ background: badge.bg, color: badge.text, border: `1px solid ${badge.border}` }}>
@@ -286,17 +312,43 @@ function RouteList({ onBookNow }) {
                       </div>
                     </div>
 
-                    <p className="flex items-center gap-2 text-gray-700 font-medium text-xs sm:text-sm mb-2">
-                      <span>{route.origin}</span>
-                      <FaArrowRight className="text-indigo-400 text-xs" />
-                      <span>{route.destination}</span>
-                      {route.estimatedKm && <span className="text-xs text-gray-400 ml-1">~{route.estimatedKm} km</span>}
-                    </p>
+                    {/* Origin → Via → Destination */}
+                    <div className="flex items-center gap-2 flex-wrap mb-2">
+                      <span className="font-semibold text-gray-800 text-xs sm:text-sm">{route.origin}</span>
+                      {route.via && (
+                        <>
+                          <FaArrowRight className="text-gray-300 text-xs flex-shrink-0" />
+                          <span className="text-xs text-gray-400 italic flex items-center gap-1">
+                            <FaMapMarkerAlt className="text-gray-300 text-[10px]" /> via {route.via}
+                          </span>
+                        </>
+                      )}
+                      <FaArrowRight className="text-indigo-400 text-xs flex-shrink-0" />
+                      <span className="font-semibold text-gray-800 text-xs sm:text-sm">{route.destination}</span>
+                    </div>
 
+                    {/* Stats row */}
                     <div className="flex flex-wrap gap-3 sm:gap-4 text-xs text-gray-500">
-                      <span className="flex items-center gap-1.5"><FaRegClock className="text-indigo-300" />{route.departureTime} – {route.arrivalTime}</span>
-                      <span className="flex items-center gap-1.5"><FaChair className="text-indigo-300" />{route.capacity} Seats</span>
-                      <span className="flex items-center gap-1.5"><FaCalendarAlt className="text-indigo-300" />{formatDate(onwardDate)}</span>
+                      <span className="flex items-center gap-1.5">
+                        <FaRegClock className="text-indigo-300" />
+                        {route.departureTime} – {route.arrivalTime}
+                      </span>
+                      {duration && (
+                        <span className="flex items-center gap-1.5">
+                          <FaClock className="text-indigo-300" /> {duration}
+                        </span>
+                      )}
+                      {route.distanceKm && (
+                        <span className="flex items-center gap-1.5">
+                          <FaRoad className="text-indigo-300" /> {route.distanceKm} km
+                        </span>
+                      )}
+                      <span className="flex items-center gap-1.5">
+                        <FaChair className="text-indigo-300" /> {route.capacity} Seats
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <FaCalendarAlt className="text-indigo-300" /> {formatDate(onwardDate)}
+                      </span>
                     </div>
                   </div>
 

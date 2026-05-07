@@ -44,8 +44,8 @@ export default function Login({ onLoginSuccess, onGoToRegister }) {
 
       {/* ── Left Panel: Branding ── */}
       <div
-        className="hidden lg:flex flex-col justify-between w-5/12 p-12"
-        style={{ background: 'linear-gradient(145deg, #4f46e5 0%, #6366f1 50%, #818cf8 100%)' }}
+        className="hidden lg:flex flex-col justify-between w-6/12 p-12"
+        style={{ background: 'linear-gradient(145deg, #00ccffff 0%, #0099ffff 50%, #0066ffff 100%)' }}
       >
         {/* Logo */}
         <div className="flex items-center gap-3">
@@ -58,8 +58,9 @@ export default function Login({ onLoginSuccess, onGoToRegister }) {
         {/* Center text */}
         <div>
           <h2 className="text-4xl font-extrabold text-white leading-snug mb-4">
-            Your journey starts<br />here. 🚌
+            Your journey starts here. 🚌
           </h2>
+          <p className="text-indigo-200 text-md mb-8">"Seamless booking experience for everyone."</p>
           <p className="text-indigo-100 text-sm leading-relaxed mb-8" style={{textAlign: 'justify'}}>
             TransitFlow is a full-stack web application designed to demonstrate modern software architecture, seamless frontend–backend integration, and scalable cloud deployment.
           </p>
