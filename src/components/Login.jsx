@@ -45,7 +45,7 @@ export default function Login({ onLoginSuccess, onGoToRegister }) {
       {/* ── Left Panel: Branding ── */}
       <div
         className="hidden lg:flex flex-col justify-between w-6/12 p-12"
-        style={{ background: 'linear-gradient(145deg, #00ccffff 0%, #0099ffff 50%, #0066ffff 100%)' }}
+        style={{ background: 'linear-gradient(145deg, #00a2ffff 0%, #5c25ffff 50%, #124189ff 100%)' }}
       >
         {/* Logo */}
         <div className="flex items-center gap-3">

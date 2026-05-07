@@ -1,8 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { FaEnvelope, FaTicketAlt, FaChair, FaClock, FaRoute, FaSpinner, FaInbox, FaMapMarkerAlt, FaArrowRight, FaBus } from 'react-icons/fa';
+import {
+  FaEnvelope, FaTicketAlt, FaChair, FaClock, FaRoute,
+  FaSpinner, FaInbox, FaMapMarkerAlt, FaArrowRight, FaBus, FaUser, FaLayerGroup
+} from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL;
-const CARD_STYLE = { padding: 'clamp(16px, 4vw, 40px)', marginTop: 'clamp(20px, 6vw, 80px)', background: 'rgba(255,255,255,0.90)', border: '1.5px solid rgba(21, 0, 255, 0.7)', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' };
+const CARD_STYLE = {
+  padding: 'clamp(16px, 4vw, 40px)',
+  marginTop: 'clamp(20px, 6vw, 80px)',
+  background: 'rgba(255,255,255,0.90)',
+  border: '1.5px solid rgba(21, 0, 255, 0.7)',
+  boxShadow: '0 1px 8px rgba(0,0,0,0.04)'
+};
 
 export default function Profile({ user, onBack }) {
   const [bookings, setBookings] = useState([]);
@@ -14,7 +23,8 @@ export default function Profile({ user, onBack }) {
     if (!user?.name) return;
     setLoading(true);
     Promise.all([
-      fetch(`${API_URL}/api/reservations/my?name=${encodeURIComponent(user.name)}`)
+      // Query by bookedBy (account holder) — shows ALL tickets booked under this account
+      fetch(`${API_URL}/api/reservations/my?bookedBy=${encodeURIComponent(user.name)}&name=${encodeURIComponent(user.name)}`)
         .then(res => { if (!res.ok) throw new Error('Could not load your bookings.'); return res.json(); }),
       fetch(`${API_URL}/api/routes`)
         .then(res => { if (!res.ok) throw new Error('Could not load routes.'); return res.json(); })
@@ -28,6 +38,12 @@ export default function Profile({ user, onBack }) {
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
   }, [user]);
+
+  // Group bookings by groupId so we can show group badges
+  const groupCounts = bookings.reduce((acc, b) => {
+    if (b.groupId) acc[b.groupId] = (acc[b.groupId] || 0) + 1;
+    return acc;
+  }, {});
 
   return (
     <div className="max-w-7xl rounded-2xl mx-auto space-y-5 sm:space-y-7" style={CARD_STYLE}>
@@ -52,7 +68,7 @@ export default function Profile({ user, onBack }) {
         </button>
       </div>
 
-      {/* Bookings Section */}
+      {/* Bookings Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
         <h2 className="text-base sm:text-lg font-bold text-gray-800 flex items-center gap-2">
           <FaTicketAlt className="text-indigo-500" /> My Bookings
@@ -60,7 +76,7 @@ export default function Profile({ user, onBack }) {
         {!loading && !error && (
           <span className="px-3 py-1 rounded-full text-xs font-semibold text-indigo-700 self-start sm:self-auto"
             style={{ background: '#eef2ff' }}>
-            {bookings.length} {bookings.length === 1 ? 'booking' : 'bookings'}
+            {bookings.length} {bookings.length === 1 ? 'ticket' : 'tickets'}
           </span>
         )}
       </div>
@@ -100,20 +116,37 @@ export default function Profile({ user, onBack }) {
         <div className="space-y-3 sm:space-y-4">
           {bookings.map((booking, idx) => {
             const route = routes[booking.routeId];
+            const isGrouped = booking.groupId && groupCounts[booking.groupId] > 1;
             return (
               <div key={booking.id ?? idx} className="rounded-2xl p-4 sm:p-5 transition-shadow hover:shadow-md"
                 style={{ background: 'white', border: '1.5px solid #e2e8f0', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
 
                 {/* Header */}
                 <div className="flex items-center justify-between mb-3 sm:mb-4">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center"
                       style={{ background: '#eef2ff' }}>
                       <FaTicketAlt className="text-indigo-500 text-xs sm:text-sm" />
                     </div>
-                    <span className="font-bold text-gray-800 text-sm">Booking #{idx + 1}</span>
+                    <span className="font-bold text-gray-800 text-sm">Ticket #{idx + 1}</span>
+
+                    {/* Passenger name badge */}
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold text-indigo-700"
+                      style={{ background: '#eef2ff', border: '1px solid #c7d2fe' }}>
+                      <FaUser className="text-[9px]" />
+                      {booking.customerName || booking.bookedBy || '—'}
+                    </span>
+
+                    {/* Group badge: same session */}
+                    {isGrouped && (
+                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold text-purple-700"
+                        style={{ background: '#f5f3ff', border: '1px solid #ddd6fe' }}>
+                        <FaLayerGroup className="text-[9px]" />
+                        Group ({groupCounts[booking.groupId]} tickets)
+                      </span>
+                    )}
                   </div>
-                  <span className="px-2 sm:px-3 py-1 rounded-full text-[10px] sm:text-xs font-semibold text-green-700"
+                  <span className="px-2 sm:px-3 py-1 rounded-full text-[10px] sm:text-xs font-semibold text-green-700 flex-shrink-0"
                     style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
                     Confirmed
                   </span>

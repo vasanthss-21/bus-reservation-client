@@ -31,6 +31,13 @@ const generateSchedules = (route) => {
   });
 };
 
+// Generates a UUID v4 to group all seats in one booking session
+const generateGroupId = () =>
+  'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+
 const SeatIcon = ({ status = 'available', label }) => {
   const colors = {
     available: { fill: '#eef2ff', stroke: '#6366f1' },
@@ -104,13 +111,17 @@ function BookSeat({ user, selectedRoute, onBack }) {
       if (!passengers[i].age || passengers[i].age < 1 || passengers[i].age > 120) return setBookingError(`Enter valid age for Passenger ${i + 1}.`);
     }
     setLoading(true); setBookingError(null);
+    // One groupId shared across all seats in this session
+    const groupId = generateGroupId();
     try {
       // Book each seat sequentially
       for (let i = 0; i < selectedSeats.length; i++) {
         const res = await fetch(`${API_URL}/api/reservations`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            customerName: passengers[i].name,
+            customerName: passengers[i].name,  // actual passenger name
+            bookedBy: user.name,               // account holder
+            groupId: groupId,                  // shared across all seats in this booking
             routeId: selectedRoute.id,
             travelTime: selectedSchedule.travelTime,
             seatNumber: selectedSeats[i],
@@ -118,7 +129,7 @@ function BookSeat({ user, selectedRoute, onBack }) {
         });
         if (!res.ok) { const t = await res.text(); throw new Error(t || `Booking failed for seat ${selectedSeats[i]}.`); }
       }
-      setBookedResults({ seats: selectedSeats, passengers, schedule: selectedSchedule });
+      setBookedResults({ seats: selectedSeats, passengers, schedule: selectedSchedule, groupId });
     } catch (err) {
       setBookingError(err.message);
     } finally {

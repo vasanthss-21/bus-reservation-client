@@ -1,310 +1,301 @@
-import React, { useState, useEffect } from 'react';
-import { FaArrowLeft, FaBus, FaChair, FaClock, FaRoute, FaTimesCircle, FaSpinner, FaInbox, FaExclamationTriangle, FaMapMarkerAlt, FaArrowRight, FaUser, FaChevronDown, FaChevronUp } from 'react-icons/fa';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  FaArrowLeft, FaBus, FaChair, FaUser, FaClock, FaMapMarkerAlt,
+  FaArrowRight, FaSpinner, FaInbox, FaTrash, FaExclamationTriangle,
+  FaCheckCircle, FaLayerGroup, FaTicketAlt, FaRoute
+} from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL;
-const CARD_STYLE = { padding: 'clamp(16px, 4vw, 40px)', marginTop: 'clamp(20px, 6vw, 80px)', background: 'rgba(255,255,255,0.90)', border: '1.5px solid rgba(21, 0, 255, 0.7)', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' };
-const SEAT_COLORS = ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6'];
+const CARD_STYLE = {
+  padding: 'clamp(16px, 4vw, 40px)',
+  marginTop: 'clamp(20px, 1vw, 80px)',
+  background: 'rgba(255,255,255,0.90)',
+  border: '1.5px solid rgba(21, 0, 255, 0.7)',
+  boxShadow: '0 1px 8px rgba(0,0,0,0.04)'
+};
 
-function CancelBooking({ user, onBack }) {
-  const [bookings, setBookings] = useState([]);
-  const [routes, setRoutes] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [cancelling, setCancelling] = useState(null); // booking.id being cancelled
+export default function CancelBooking({ user, onBack }) {
+  const [bookings, setBookings]       = useState([]);
+  const [routes, setRoutes]           = useState({});
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState('');
+  const [cancelling, setCancelling]   = useState(null);   // id of ticket being cancelled
   const [cancelError, setCancelError] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
-  const [expandedGroups, setExpandedGroups] = useState({}); // routeId+travelTime -> bool
+  const [cancelled, setCancelled]     = useState([]);     // ids already cancelled this session
+  const [confirmId, setConfirmId]     = useState(null);   // id awaiting confirm dialog
 
-  useEffect(() => {
+  const fetchBookings = useCallback(() => {
     if (!user?.name) return;
     setLoading(true);
+    setError('');
     Promise.all([
-      fetch(`${API_URL}/api/reservations/my?name=${encodeURIComponent(user.name)}`)
-        .then(res => { if (!res.ok) throw new Error('Could not load bookings.'); return res.json(); }),
+      fetch(`${API_URL}/api/reservations/my?bookedBy=${encodeURIComponent(user.name)}&name=${encodeURIComponent(user.name)}`)
+        .then(res => { if (!res.ok) throw new Error('Could not load your bookings.'); return res.json(); }),
       fetch(`${API_URL}/api/routes`)
         .then(res => { if (!res.ok) throw new Error('Could not load routes.'); return res.json(); })
     ])
       .then(([bookingsData, routesData]) => {
-        setBookings(bookingsData);
+        // Filter out already-cancelled tickets from this session
+        setBookings(bookingsData.filter(b => !cancelled.includes(b.id)));
         const routeMap = {};
-        routesData.forEach(route => { routeMap[route.id] = route; });
+        routesData.forEach(r => { routeMap[r.id] = r; });
         setRoutes(routeMap);
       })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
-  }, [user]);
+  }, [user, cancelled]);
 
-  // Group bookings by routeId + travelTime (same trip)
-  const groupedBookings = bookings.reduce((acc, booking) => {
-    const key = `${booking.routeId}__${booking.travelTime}`;
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(booking);
+  useEffect(() => { fetchBookings(); }, [user]);
+
+  const handleCancel = async (id) => {
+    setConfirmId(null);
+    setCancelling(id);
+    setCancelError('');
+    try {
+      const res = await fetch(`${API_URL}/api/reservations/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || 'Cancellation failed.');
+      }
+      setCancelled(prev => [...prev, id]);
+      setBookings(prev => prev.filter(b => b.id !== id));
+    } catch (err) {
+      setCancelError(err.message);
+    } finally {
+      setCancelling(null);
+    }
+  };
+
+  // Group bookings by groupId for group badges
+  const groupCounts = bookings.reduce((acc, b) => {
+    if (b.groupId) acc[b.groupId] = (acc[b.groupId] || 0) + 1;
     return acc;
   }, {});
 
-  const toggleGroup = (key) => setExpandedGroups(prev => ({ ...prev, [key]: !prev[key] }));
-
-  const handleCancelOne = async (booking) => {
-    setCancelling(booking.id); setCancelError(''); setSuccessMsg('');
-    try {
-      const res = await fetch(`${API_URL}/api/reservations`, {
-        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerName: booking.customerName, routeId: booking.routeId, travelTime: booking.travelTime, seatNumber: booking.seatNumber }),
-      });
-      const text = await res.text();
-      if (!res.ok) throw new Error(text || 'Cancellation failed.');
-      setBookings(prev => prev.filter(b => b.id !== booking.id));
-      setSuccessMsg(`Seat #${booking.seatNumber} cancelled successfully.`);
-    } catch (err) { setCancelError(err.message); }
-    finally { setCancelling(null); }
-  };
-
-  const handleCancelAll = async (groupBookings) => {
-    setCancelError(''); setSuccessMsg('');
-    for (const booking of groupBookings) {
-      setCancelling(booking.id);
-      try {
-        const res = await fetch(`${API_URL}/api/reservations`, {
-          method: 'DELETE', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ customerName: booking.customerName, routeId: booking.routeId, travelTime: booking.travelTime, seatNumber: booking.seatNumber }),
-        });
-        const text = await res.text();
-        if (!res.ok) throw new Error(text || `Cancellation failed for seat ${booking.seatNumber}.`);
-        setBookings(prev => prev.filter(b => b.id !== booking.id));
-      } catch (err) { setCancelError(err.message); setCancelling(null); return; }
-    }
-    setCancelling(null);
-    setSuccessMsg('All seats in this trip cancelled successfully.');
-  };
-
-  if (loading) return (
-    <div className="max-w-7xl rounded-2xl mx-auto" style={CARD_STYLE}>
-      <div className="flex flex-col items-center justify-center py-12 sm:py-16">
-        <FaSpinner className="animate-spin text-3xl sm:text-4xl text-indigo-400 mb-3" />
-        <p className="text-gray-500 text-sm">Loading your bookings…</p>
-      </div>
-    </div>
-  );
+  const visibleBookings = bookings.filter(b => !cancelled.includes(b.id));
 
   return (
     <div className="max-w-7xl rounded-2xl mx-auto space-y-5 sm:space-y-7" style={CARD_STYLE}>
 
-      {/* Back */}
-      <button onClick={onBack}
-        className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-sm font-medium text-indigo-600 transition hover:bg-indigo-50"
-        style={{ background: 'rgba(255,255,255,0.7)', border: '1.5px solid #e0e7ff' }}>
-        <FaArrowLeft className="text-xs" /> Back to Routes
-      </button>
-
       {/* Header */}
-      <div className="p-4 sm:p-6 rounded-2xl"
+      <div className="rounded-2xl p-4 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-5"
         style={{ background: 'white', border: '1.5px solid #e2e8f0', boxShadow: '0 2px 16px rgba(99,102,241,0.07)' }}>
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: '#fff1f2' }}>
-            <FaTimesCircle className="text-rose-500" />
-          </div>
-          <div className="flex-1">
-            <h2 className="text-lg sm:text-xl font-extrabold text-gray-900">Cancel a Booking</h2>
-            <p className="text-xs sm:text-sm text-gray-400">Cancel individual seats or an entire trip</p>
-          </div>
-          {bookings.length > 0 && (
-            <span className="px-3 py-1 rounded-full text-xs font-semibold text-rose-600 self-start sm:self-auto"
-              style={{ background: '#fff1f2', border: '1px solid #fecdd3' }}>
-              {bookings.length} seat{bookings.length > 1 ? 's' : ''} active
-            </span>
-          )}
+        <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center flex-shrink-0"
+          style={{ background: 'linear-gradient(135deg,#ef4444,#dc2626)' }}>
+          <FaTrash className="text-white text-xl sm:text-2xl" />
         </div>
+        <div className="flex-1">
+          <h1 className="text-lg sm:text-xl font-extrabold text-gray-900">Cancel Booking</h1>
+          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
+            Select a ticket to cancel. Only your account's bookings are shown.
+          </p>
+        </div>
+        <button onClick={onBack}
+          className="px-3 sm:px-4 py-2 rounded-xl text-sm font-medium text-indigo-600 transition-colors hover:bg-indigo-50 self-start flex items-center gap-2"
+          style={{ border: '1.5px solid #e0e7ff' }}>
+          <FaArrowLeft className="text-xs" /> Back
+        </button>
       </div>
 
-      {/* Success */}
-      {successMsg && (
-        <div className="px-4 py-3 rounded-xl text-green-700 text-sm font-medium flex items-center gap-2"
-          style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
-          <span>✓</span> {successMsg}
-        </div>
-      )}
-
-      {/* Error */}
-      {(error || cancelError) && (
+      {/* Cancel error banner */}
+      {cancelError && (
         <div className="px-4 py-3 rounded-xl text-red-600 text-sm flex items-center gap-2"
           style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
-          <FaExclamationTriangle className="flex-shrink-0" /> {error || cancelError}
+          <FaExclamationTriangle className="flex-shrink-0" /> {cancelError}
         </div>
       )}
 
-      {/* Empty */}
-      {!error && bookings.length === 0 && (
-        <div className="p-8 sm:p-10 rounded-2xl text-center"
-          style={{ background: 'white', border: '1.5px solid #e2e8f0' }}>
-          <FaInbox className="text-5xl sm:text-6xl text-gray-200 mx-auto mb-4" />
-          <p className="font-bold text-gray-600 text-base sm:text-lg mb-1">No bookings found</p>
-          <p className="text-gray-400 text-xs sm:text-sm mb-6">
-            {successMsg ? "You've cancelled all your bookings." : "You haven't booked any seats yet."}
-          </p>
+      {/* Ticket count */}
+      {!loading && !error && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <h2 className="text-base sm:text-lg font-bold text-gray-800 flex items-center gap-2">
+            <FaTicketAlt className="text-red-500" /> Your Tickets
+          </h2>
+          <span className="px-3 py-1 rounded-full text-xs font-semibold text-red-700 self-start sm:self-auto"
+            style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
+            {visibleBookings.length} {visibleBookings.length === 1 ? 'ticket' : 'tickets'}
+          </span>
+        </div>
+      )}
+
+      {/* Loading */}
+      {loading && (
+        <div className="flex flex-col items-center justify-center py-12 sm:py-16 text-gray-400">
+          <FaSpinner className="animate-spin text-2xl sm:text-3xl text-indigo-400 mb-3" />
+          <p className="text-sm">Loading your tickets…</p>
+        </div>
+      )}
+
+      {/* Fetch error */}
+      {error && (
+        <div className="px-4 py-3 rounded-xl text-red-600 text-sm"
+          style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
+          {error}
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && !error && visibleBookings.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-12 sm:py-16 text-gray-400">
+          <FaInbox className="text-4xl sm:text-5xl text-gray-200 mb-4" />
+          <p className="font-semibold text-gray-500 text-sm sm:text-base">No active bookings</p>
+          <p className="text-xs sm:text-sm mt-1">All your tickets have been cancelled or you haven't booked yet.</p>
           <button onClick={onBack}
-            className="px-5 sm:px-6 py-2.5 rounded-xl text-sm font-semibold text-white transition hover:brightness-110 shadow-md shadow-indigo-200"
-            style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}>
+            className="mt-5 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110"
+            style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}>
             Browse Routes
           </button>
         </div>
       )}
 
-      {/* Grouped booking cards */}
-      {bookings.length > 0 && (
-        <div className="space-y-4">
-          {Object.entries(groupedBookings).map(([key, groupBookings], gIdx) => {
-            const route = routes[groupBookings[0].routeId];
-            const isMulti = groupBookings.length > 1;
-            const isExpanded = expandedGroups[key] ?? true;
-            const allCancelling = groupBookings.every(b => cancelling === b.id);
+      {/* Ticket Cards */}
+      {!loading && !error && visibleBookings.length > 0 && (
+        <div className="space-y-3 sm:space-y-4">
+          {visibleBookings.map((booking, idx) => {
+            const route = routes[booking.routeId];
+            const isGrouped = booking.groupId && groupCounts[booking.groupId] > 1;
+            const isCancelling = cancelling === booking.id;
+            const isConfirming = confirmId === booking.id;
 
             return (
-              <div key={key} className="rounded-2xl overflow-hidden"
-                style={{ background: 'white', border: '1.5px solid #e2e8f0', boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
+              <div key={booking.id ?? idx}
+                className="rounded-2xl p-4 sm:p-5 transition-all duration-200"
+                style={{
+                  background: 'white',
+                  border: isConfirming ? '1.5px solid #fca5a5' : '1.5px solid #e2e8f0',
+                  boxShadow: isConfirming ? '0 0 0 3px #fef2f2' : '0 1px 8px rgba(0,0,0,0.04)'
+                }}>
 
-                {/* Group header */}
-                <div className="p-4 sm:p-5">
-                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-
-                    <div className="flex items-start gap-3 flex-1">
-                      <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                        style={{ background: '#eef2ff' }}>
-                        <FaBus className="text-indigo-500 text-sm" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-
-                        {/* Title + badge */}
-                        <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <span className="font-bold text-gray-900 text-sm">Trip #{gIdx + 1}</span>
-                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold text-green-700"
-                            style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>Confirmed</span>
-                          {isMulti && (
-                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold text-indigo-600"
-                              style={{ background: '#eef2ff', border: '1px solid #c7d2fe' }}>
-                              {groupBookings.length} passengers
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Route */}
-                        {route ? (
-                          <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-                            <FaMapMarkerAlt className="text-indigo-400 text-xs flex-shrink-0" />
-                            <span className="font-semibold text-gray-800 text-sm">{route.origin}</span>
-                            <FaArrowRight className="text-gray-300 text-xs flex-shrink-0" />
-                            <span className="font-semibold text-gray-800 text-sm">{route.destination}</span>
-                            {(route.busNumber ?? route.bus_number) && (
-                              <span className="ml-1 px-2 py-0.5 rounded-full text-xs text-indigo-500 font-medium"
-                                style={{ background: '#eef2ff', border: '1px solid #c7d2fe' }}>
-                                {route.busNumber ?? route.bus_number}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1.5 mb-2">
-                            <FaRoute className="text-indigo-300 text-xs" />
-                            <span className="text-xs text-gray-400">Route ID: <span className="font-medium text-gray-600">{groupBookings[0].routeId}</span></span>
-                          </div>
-                        )}
-
-                        {/* Time */}
-                        <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                          <FaClock className="text-indigo-300 flex-shrink-0" />
-                          <span>Departure: <span className="font-medium text-gray-700">{groupBookings[0].travelTime}</span></span>
-                        </div>
-                      </div>
+                {/* Ticket Header */}
+                <div className="flex items-center justify-between mb-3 sm:mb-4 flex-wrap gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center"
+                      style={{ background: '#eef2ff' }}>
+                      <FaTicketAlt className="text-indigo-500 text-xs sm:text-sm" />
                     </div>
+                    <span className="font-bold text-gray-800 text-sm">Ticket #{idx + 1}</span>
 
-                    {/* Action buttons */}
-                    <div className="flex flex-col gap-2 flex-shrink-0 min-w-[120px]">
-                      {/* Cancel all (only for multi) */}
-                      {isMulti && (
-                        <button
-                          onClick={() => handleCancelAll(groupBookings)}
-                          disabled={!!cancelling}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-600 transition-all hover:brightness-95 active:scale-95 disabled:opacity-50 justify-center"
-                          style={{ background: '#fff1f2', border: '1.5px solid #fecdd3' }}>
-                          {cancelling && groupBookings.some(b => b.id === cancelling)
-                            ? <><FaSpinner className="animate-spin" /> Cancelling…</>
-                            : <><FaTimesCircle /> Cancel All</>}
-                        </button>
-                      )}
+                    {/* Passenger name */}
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold text-indigo-700"
+                      style={{ background: '#eef2ff', border: '1px solid #c7d2fe' }}>
+                      <FaUser className="text-[9px]" />
+                      {booking.customerName || booking.bookedBy || '—'}
+                    </span>
 
-                      {/* Single booking cancel (shown inline for solo trips) */}
-                      {!isMulti && (
-                        <button
-                          onClick={() => handleCancelOne(groupBookings[0])}
-                          disabled={cancelling === groupBookings[0].id}
-                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold text-rose-600 transition-all hover:brightness-95 active:scale-95 disabled:opacity-50 justify-center"
-                          style={{ background: '#fff1f2', border: '1.5px solid #fecdd3' }}>
-                          {cancelling === groupBookings[0].id
-                            ? <><FaSpinner className="animate-spin" /> Cancelling…</>
-                            : <><FaTimesCircle /> Cancel</>}
-                        </button>
-                      )}
+                    {/* Group badge */}
+                    {isGrouped && (
+                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold text-purple-700"
+                        style={{ background: '#f5f3ff', border: '1px solid #ddd6fe' }}>
+                        <FaLayerGroup className="text-[9px]" />
+                        Group booking
+                      </span>
+                    )}
+                  </div>
 
-                      {/* Expand/collapse for multi */}
-                      {isMulti && (
-                        <button
-                          onClick={() => toggleGroup(key)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-indigo-600 justify-center transition hover:bg-indigo-50"
-                          style={{ background: '#eef2ff', border: '1px solid #c7d2fe' }}>
-                          {isExpanded ? <><FaChevronUp className="text-[10px]" /> Hide seats</> : <><FaChevronDown className="text-[10px]" /> View seats</>}
-                        </button>
-                      )}
+                  {/* Status + Cancel button */}
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-1 rounded-full text-[10px] sm:text-xs font-semibold text-green-700"
+                      style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+                      Active
+                    </span>
+                    {!isConfirming && (
+                      <button
+                        onClick={() => setConfirmId(booking.id)}
+                        disabled={isCancelling}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-red-600 transition-all hover:bg-red-50 disabled:opacity-50"
+                        style={{ border: '1.5px solid #fecaca' }}>
+                        {isCancelling
+                          ? <><FaSpinner className="animate-spin" /> Cancelling…</>
+                          : <><FaTrash className="text-[10px]" /> Cancel</>}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Inline confirm dialog */}
+                {isConfirming && (
+                  <div className="mb-3 p-3 rounded-xl flex flex-col sm:flex-row items-start sm:items-center gap-3"
+                    style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
+                    <div className="flex items-center gap-2 flex-1">
+                      <FaExclamationTriangle className="text-red-500 flex-shrink-0" />
+                      <p className="text-sm font-medium text-red-700">
+                        Cancel <span className="font-bold">{booking.customerName || 'this'}'s</span> ticket for Seat <span className="font-bold">#{booking.seatNumber}</span>?
+                        <span className="block text-xs font-normal text-red-500 mt-0.5">This cannot be undone.</span>
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setConfirmId(null)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-100 transition"
+                        style={{ border: '1px solid #e2e8f0' }}>
+                        Keep it
+                      </button>
+                      <button
+                        onClick={() => handleCancel(booking.id)}
+                        disabled={isCancelling}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition hover:brightness-110 disabled:opacity-50"
+                        style={{ background: '#ef4444' }}>
+                        {isCancelling ? 'Cancelling…' : 'Yes, Cancel'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Route pill */}
+                {route ? (
+                  <div className="flex items-center gap-2 mb-3 p-2.5 rounded-xl flex-wrap"
+                    style={{ background: '#f8faff', border: '1px solid #e0e7ff' }}>
+                    <FaMapMarkerAlt className="text-indigo-400 text-xs flex-shrink-0" />
+                    <span className="font-semibold text-gray-800 text-sm">{route.origin}</span>
+                    <FaArrowRight className="text-gray-300 text-xs flex-shrink-0" />
+                    <span className="font-semibold text-gray-800 text-sm">{route.destination}</span>
+                    {route.busName && (
+                      <span className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded-full text-xs text-indigo-500 font-medium"
+                        style={{ background: '#eef2ff', border: '1px solid #c7d2fe' }}>
+                        <FaBus className="text-[10px]" /> {route.busName}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 mb-3">
+                    <FaRoute className="text-indigo-300 text-xs" />
+                    <span className="text-xs text-gray-400">Route: <span className="font-medium text-gray-600">{booking.routeId}</span></span>
+                  </div>
+                )}
+
+                {/* Details grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+                  <div className="flex items-start gap-2">
+                    <FaClock className="text-indigo-400 mt-0.5 flex-shrink-0 text-xs" />
+                    <div>
+                      <p className="text-[10px] sm:text-xs text-gray-400 font-medium">Travel Time</p>
+                      <p className="text-xs sm:text-sm font-semibold text-gray-700">{booking.travelTime}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <FaChair className="text-indigo-400 mt-0.5 flex-shrink-0 text-xs" />
+                    <div>
+                      <p className="text-[10px] sm:text-xs text-gray-400 font-medium">Seat Number</p>
+                      <p className="text-xs sm:text-sm font-semibold text-gray-700">Seat {booking.seatNumber}</p>
                     </div>
                   </div>
                 </div>
 
-                {/* Per-seat rows (expanded) */}
-                {isMulti && isExpanded && (
-                  <div className="border-t" style={{ borderColor: '#f1f5f9' }}>
-                    {groupBookings.map((booking, sIdx) => (
-                      <div key={booking.id ?? sIdx}
-                        className="flex items-center justify-between px-4 sm:px-5 py-3 gap-3 transition-colors hover:bg-slate-50"
-                        style={{ borderBottom: sIdx < groupBookings.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
-
-                        <div className="flex items-center gap-3 flex-1 min-w-0">
-                          {/* Colored seat dot */}
-                          <span className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
-                            style={{ background: SEAT_COLORS[sIdx % SEAT_COLORS.length] }}>
-                            {sIdx + 1}
-                          </span>
-
-                          <div className="flex flex-wrap gap-x-4 gap-y-0.5">
-                            <span className="flex items-center gap-1 text-xs text-gray-600">
-                              <FaUser className="text-indigo-300 text-[10px]" />
-                              <span className="font-medium text-gray-800">{booking.customerName}</span>
-                            </span>
-                            <span className="flex items-center gap-1 text-xs text-gray-500">
-                              <FaChair className="text-indigo-300 text-[10px]" />
-                              Seat <span className="font-semibold text-gray-700">#{booking.seatNumber}</span>
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Cancel single seat */}
-                        <button
-                          onClick={() => handleCancelOne(booking)}
-                          disabled={!!cancelling}
-                          className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-500 transition-all hover:brightness-95 active:scale-95 disabled:opacity-50"
-                          style={{ background: '#fff1f2', border: '1px solid #fecdd3' }}>
-                          {cancelling === booking.id
-                            ? <FaSpinner className="animate-spin text-[10px]" />
-                            : <><FaTimesCircle className="text-[10px]" /> Cancel seat</>}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             );
           })}
         </div>
       )}
+
+      {/* Cancelled-in-session summary */}
+      {cancelled.length > 0 && (
+        <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-green-700 text-sm"
+          style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+          <FaCheckCircle className="flex-shrink-0" />
+          {cancelled.length} ticket{cancelled.length > 1 ? 's' : ''} successfully cancelled this session.
+        </div>
+      )}
+
     </div>
   );
 }
-
-export default CancelBooking;
