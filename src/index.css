@@ -5,3 +5,9 @@
 body {
   font-family: 'Ubuntu', sans-serif;
 }
+
+.flip-scene {
+  perspective: 1400px;
+  transform-style: flat;
+  /* prevent perspective from leaking to siblings */
+}

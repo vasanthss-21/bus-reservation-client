@@ -3,7 +3,7 @@ import { FaBus, FaRegClock, FaArrowRight, FaRupeeSign, FaChair, FaSearch, FaMapM
 
 const API_URL = import.meta.env.VITE_API_URL;
 
-const CARD_STYLE = { padding: 'clamp(16px, 4vw, 40px)', marginTop: 'clamp(20px, 6vw, 80px)', background: 'rgba(255,255,255,0.90)', border: '1.5px solid rgba(21, 0, 255, 0.7)', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' };
+const CARD_STYLE = { padding: 'clamp(16px, 4vw, 40px)', marginTop: 'clamp(20px, 6vw, 80px)', background: 'rgba(255,255,255,0.7)', border: '2px solid rgba(21, 0, 255, 1)', boxShadow: '0 0px 15px rgba(0, 81, 255, 0.8)' };
 
 const realisticFare = (route) => {
   if (route.price) return route.price;
@@ -141,7 +141,7 @@ function RouteList({ onBookNow }) {
 
       {/* Search Panel */}
       <div className="p-4 sm:p-6 max-w-6xl mx-auto rounded-2xl"
-        style={{ background: 'rgba(255,255,255,0.90)', backdropFilter: 'blur(18px)', border: '1.5px solid rgba(255,255,255,0.7)', boxShadow: '0 8px 40px rgba(99,102,241,0.08)' }}>
+        style={{ background: 'rgba(255,255,255,1)', backdropFilter: 'blur(18px)', border: '1.5px solid rgba(255,255,255,1)', boxShadow: '0 8px 40px rgba(99,102,241,0.08)' }}>
 
         <div className="text-center mb-4 sm:mb-5">
           <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900">Search Bus Routes</h2>

@@ -77,8 +77,7 @@ function App() {
 
       {/* Dark overlay — responsive gaps */}
       <div className="fixed -z-10 rounded-2xl"
-        style={{ top: '70px', left: 'clamp(8px, 5vw, 80px)', right: 'clamp(8px, 5vw, 80px)', bottom: '16px', background: 'rgba(0, 0, 0, 0.7)' }} />
-
+        style={{ top: '70px', left: 'clamp(8px, 5vw, 80px)', right: 'clamp(8px, 5vw, 80px)', bottom: '16px', border: '2px solid rgba(21, 0, 255, 0.2)',backdropFilter: 'blur(10px)', background: 'rgba(0, 0, 0, 0.7)' }} />
       {isNavigating && <PageLoader />}
 
       {/* Header */}

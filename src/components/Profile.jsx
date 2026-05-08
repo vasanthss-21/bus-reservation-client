@@ -5,13 +5,7 @@ import {
 } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL;
-const CARD_STYLE = {
-  padding: 'clamp(16px, 4vw, 40px)',
-  marginTop: 'clamp(20px, 6vw, 80px)',
-  background: 'rgba(255,255,255,0.90)',
-  border: '1.5px solid rgba(21, 0, 255, 0.7)',
-  boxShadow: '0 1px 8px rgba(0,0,0,0.04)'
-};
+const CARD_STYLE = { padding: 'clamp(16px, 4vw, 40px)', marginTop: 'clamp(20px, 1vw, 80px)', background: 'rgba(255,255,255,0.7)', border: '2px solid rgba(21, 0, 255, 1)', boxShadow: '0 0px 15px rgba(0, 81, 255, 0.8)' };
 
 export default function Profile({ user, onBack }) {
   const [bookings, setBookings] = useState([]);
