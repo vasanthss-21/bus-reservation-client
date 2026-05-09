@@ -9,5 +9,4 @@ body {
 .flip-scene {
   perspective: 1400px;
   transform-style: flat;
-  /* prevent perspective from leaking to siblings */
 }

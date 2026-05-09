@@ -303,8 +303,12 @@ export default function Login({ onLoginSuccess, onGoToRegister: _unused }) {
   return (
     <div
       className="min-h-screen flex flex-col lg:flex-row items-center justify-center lg:gap-6 gap-4 p-4 lg:p-8"
-      style={{ background: '#eef2ff' }}
-    >
+      style={{ background: '#000000a5'}}>
+      <video autoPlay loop muted playsInline
+        className="fixed inset-0 w-full h-full object-cover -z-10"
+        style={{ pointerEvents: 'none' }}>
+        <source src="/bg.mp4" type="video/mp4" />
+      </video>
       {navLoading && <PageLoader />}
 
       {/* ── Branding Card ─────────────────────────────────────────────────── */}
